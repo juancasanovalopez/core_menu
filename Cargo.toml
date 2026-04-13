@@ -1,6 +1,6 @@
 [package]
 name        = "core_menu"
-version     = "0.1.0"
+version     = "1.0.0"
 edition     = "2021"
 description = "Gestor de sistema Linux con menú TUI interactivo en la terminal"
 authors     = ["Alfred"]

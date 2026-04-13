@@ -106,3 +106,7 @@ dist/
 *.gpx
 secret_datas.md
 meteo_data.md
+
+
+# ── Rust ─────────────────────────────────────────────────────
+/target

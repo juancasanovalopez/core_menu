@@ -199,9 +199,42 @@ Gestión de KVM y motores de contenedores (Docker, Podman, Nerdctl…).
 
 ---
 
+## Releases
+
+Los binarios precompilados se publican en la carpeta [`releases/`](releases/) con naming semántico:
+
+```
+releases/
+└── v1.0.0/
+    ├── core_menu-v1.0.0-x86_64-linux   ← binario ELF64, strip, ~875 KB
+    └── SHA256SUMS                       ← checksum de integridad
+```
+
+### Descargar e instalar v1.0.0
+
+```bash
+# Descargar el binario
+curl -LO https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/core_menu-v1.0.0-x86_64-linux
+
+# Verificar integridad
+sha256sum -c <(curl -s https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/SHA256SUMS)
+
+# Instalar en el sistema
+chmod +x core_menu-v1.0.0-x86_64-linux
+sudo mv core_menu-v1.0.0-x86_64-linux /usr/local/bin/core_menu
+```
+
+### Historial de versiones
+
+| Versión | Fecha | Notas |
+|---------|-------|-------|
+| [v1.0.0](releases/v1.0.0/) | 2026-04-13 | Primera versión estable de producción |
+
+---
+
 ## Tecnología
 
 - **Lenguaje:** Rust 2021 edition
 - **TUI:** [ratatui](https://ratatui.rs) v0.26 sobre [crossterm](https://github.com/crossterm-rs/crossterm) v0.27
 - **Gestión de errores:** [anyhow](https://github.com/dtolnay/anyhow) v1.0
-- **Binario final:** ~963 KB (compilado en modo `--release`)
+- **Binario final:** ~875 KB (`strip` + `--release`), versión `1.0.0`
