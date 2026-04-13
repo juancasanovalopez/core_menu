@@ -1,0 +1,17 @@
+[package]
+name        = "core_menu"
+version     = "0.1.0"
+edition     = "2021"
+description = "Gestor de sistema Linux con menú TUI interactivo en la terminal"
+authors     = ["Alfred"]
+
+# ─────────────────────────────────────────────────────────────────
+#  DEPENDENCIAS
+#  ratatui  → marco TUI (funciona sobre crossterm)
+#  crossterm→ backend de terminal multiplataforma (lectura de eventos)
+#  anyhow   → gestión de errores ergonómica
+# ─────────────────────────────────────────────────────────────────
+[dependencies]
+ratatui   = "0.26"
+crossterm = "0.27"
+anyhow    = "1.0"
