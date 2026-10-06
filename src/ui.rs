@@ -23,6 +23,7 @@ use ratatui::{
 };
 
 use crate::app::{App, AppMode};
+use crate::hardware::GpuMemoryKind;
 use crate::submenus::ChartBar;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,6 +121,15 @@ fn render_header(f: &mut Frame, area: Rect) {
 /// - cursor < n_submenús  → índice visual = cursor
 /// - cursor == n_submenús → índice visual = cursor + 1  (salta el separador)
 fn render_main_menu(f: &mut Frame, app: &App, area: Rect) {
+    let summary = hardware_lines(app);
+    let summary_height = (summary.len().saturating_add(1).min(u16::MAX as usize) as u16)
+        .min(area.height.saturating_sub(5));
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(summary_height), Constraint::Min(3)])
+        .split(area);
+    render_hardware(f, summary, chunks[0]);
+    let area = chunks[1];
     let n = app.submenus.len();
 
     // Entradas de submenús
@@ -187,6 +197,96 @@ fn render_main_menu(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(visual_idx));
 
     f.render_stateful_widget(list, area, &mut state);
+}
+
+fn hardware_lines(app: &App) -> Vec<Line<'static>> {
+    let memory = match &app.hardware.memory {
+        Ok(memory) => Line::from(vec![
+            Span::styled(" RAM disponible/total: ", Style::default().fg(ITEM_DESC_FG)),
+            Span::styled(
+                format!(
+                    "{} / {}",
+                    fmt_bytes(memory.available),
+                    fmt_bytes(memory.total),
+                ),
+                Style::default().fg(ITEM_NAME_FG),
+            ),
+        ]),
+        Err(error) => Line::styled(
+            format!(" RAM: Error: {error}"),
+            Style::default().fg(Color::Red),
+        ),
+    };
+    let cpu = match &app.hardware.cpu {
+        Ok(cpu) => Line::from(vec![
+            Span::styled(" CPU: ", Style::default().fg(ITEM_DESC_FG)),
+            Span::styled(
+                format!("{} núcleos / {} hilos", cpu.cores, cpu.threads),
+                Style::default().fg(ITEM_NAME_FG),
+            ),
+        ]),
+        Err(error) => Line::styled(
+            format!(" CPU: Error: {error}"),
+            Style::default().fg(Color::Red),
+        ),
+    };
+    let mut lines = vec![memory, cpu];
+    match &app.hardware.gpus {
+        Ok(gpus) if gpus.is_empty() => lines.push(Line::styled(
+            " GPU: No se detectaron procesadores gráficos PCI",
+            Style::default().fg(ITEM_DESC_FG),
+        )),
+        Ok(gpus) => {
+            for (index, gpu) in gpus.iter().enumerate() {
+                lines.push(Line::from(vec![
+                    Span::styled(format!(" GPU {index}: "), Style::default().fg(ITEM_DESC_FG)),
+                    Span::styled(gpu.name.clone(), Style::default().fg(ITEM_NAME_FG)),
+                ]));
+                match &gpu.memory {
+                    Ok(pools) => {
+                        for pool in pools {
+                            let label = match pool.kind {
+                                GpuMemoryKind::Dedicated => "VRAM dedicada",
+                                GpuMemoryKind::Shared => "RAM compartida (~)",
+                                GpuMemoryKind::ReservedShared => "Compartida reservada",
+                            };
+                            let available = pool.available.map(fmt_bytes)
+                                .unwrap_or_else(|| "N/D".to_string());
+                            lines.push(Line::from(vec![
+                                Span::styled(format!(" {label}: "), Style::default().fg(ITEM_DESC_FG)),
+                                Span::styled(
+                                    format!("{available} / {}", fmt_bytes(pool.total)),
+                                    Style::default().fg(ITEM_NAME_FG),
+                                ),
+                            ]));
+                        }
+                    }
+                    Err(error) => lines.push(Line::styled(
+                        format!(" Memoria/tipo GPU: Error: {error}"),
+                        Style::default().fg(Color::Red),
+                    )),
+                }
+            }
+        }
+        Err(error) => lines.push(Line::styled(
+            format!(" GPU: Error: {error}"),
+            Style::default().fg(Color::Red),
+        )),
+    }
+    lines
+}
+
+fn render_hardware(f: &mut Frame, mut lines: Vec<Line<'static>>, area: Rect) {
+    let visible = area.height as usize;
+    if lines.len() > visible && visible > 0 {
+        let hidden = lines.len() - visible + 1;
+        lines.truncate(visible - 1);
+        lines.push(Line::styled(
+            format!(" +{hidden} líneas (amplía la ventana)"),
+            Style::default().fg(ITEM_DESC_FG),
+        ));
+    }
+    f.render_widget(Paragraph::new(lines), area);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -484,4 +584,128 @@ fn render_footer(f: &mut Frame, mode: &AppMode, area: Rect) {
         );
 
     f.render_widget(footer, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hardware::{CpuInfo, GpuInfo, GpuMemory, HardwareInfo, MemoryInfo};
+    use crossterm::event::{KeyCode, KeyModifiers};
+    use ratatui::{backend::TestBackend, Terminal};
+
+    fn app_with_hardware() -> App {
+        let mut app = App::new();
+        app.hardware = HardwareInfo {
+            memory: Ok(MemoryInfo {
+                available: 4 << 30,
+                total: 8 << 30,
+            }),
+            cpu: Ok(CpuInfo { cores: 4, threads: 8 }),
+            gpus: Ok(Vec::new()),
+        };
+        app
+    }
+
+    fn screen(app: &App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        terminal.draw(|frame| render(frame, app)).unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect()
+    }
+
+    #[test]
+    fn main_menu_shows_minimal_summary_at_normal_and_narrow_sizes() {
+        let app = app_with_hardware();
+        for (width, height) in [(80, 24), (40, 18)] {
+            let text = screen(&app, width, height);
+            assert!(text.contains("RAM disponible/total: 4.0 GiB / 8.0 GiB"));
+            assert!(text.contains("CPU: 4 núcleos / 8 hilos"));
+            assert!(text.contains("Menú Principal"));
+            assert!(text.contains(app.submenus[0].name));
+            if height == 24 {
+                assert!(text.contains("Salir"));
+            }
+        }
+    }
+
+    #[test]
+    fn summary_does_not_change_navigation_or_submenus() {
+        let mut app = app_with_hardware();
+        assert!(!app.handle_main_key(KeyCode::Enter, KeyModifiers::NONE));
+        let text = screen(&app, 80, 24);
+        assert!(!text.contains("RAM disponible/total:"));
+        app.handle_submenu_key(KeyCode::Esc, KeyModifiers::NONE, 0);
+        assert!(screen(&app, 80, 24).contains("RAM disponible/total:"));
+        for _ in 0..app.submenus.len() {
+            assert!(!app.handle_main_key(KeyCode::Down, KeyModifiers::NONE));
+        }
+        assert!(screen(&app, 40, 14).contains("Salir"));
+        assert!(app.handle_main_key(KeyCode::Enter, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn errors_are_visible_without_hiding_other_metrics() {
+        let mut app = app_with_hardware();
+        app.hardware.memory = Err("Falta MemAvailable".into());
+        let text = screen(&app, 80, 24);
+        assert!(text.contains("RAM: Error: Falta MemAvailable"));
+        assert!(text.contains("CPU: 4 núcleos / 8 hilos"));
+        app.hardware.cpu = Err("No se pudo leer la topología".into());
+        assert!(screen(&app, 80, 24).contains("CPU: Error: No se pudo leer la topología"));
+    }
+
+    #[test]
+    fn summary_shows_multiple_gpus_and_memory_types() {
+        let mut app = app_with_hardware();
+        app.hardware.gpus = Ok(vec![
+            GpuInfo {
+                name: "AMD integrada".into(),
+                memory: Ok(vec![
+                    GpuMemory { kind: GpuMemoryKind::ReservedShared, available: Some(1 << 30), total: 2 << 30 },
+                    GpuMemory { kind: GpuMemoryKind::Shared, available: Some(3 << 30), total: 4 << 30 },
+                ]),
+            },
+            GpuInfo {
+                name: "NVIDIA dedicada".into(),
+                memory: Ok(vec![GpuMemory {
+                    kind: GpuMemoryKind::Dedicated, available: Some(6 << 30), total: 8 << 30,
+                }]),
+            },
+        ]);
+        let text = screen(&app, 80, 30);
+        for value in [
+            "GPU 0: AMD integrada", "GPU 1: NVIDIA dedicada",
+            "Compartida reservada: 1.0 GiB / 2.0 GiB",
+            "RAM compartida (~): 3.0 GiB / 4.0 GiB",
+            "VRAM dedicada: 6.0 GiB / 8.0 GiB",
+        ] {
+            assert!(text.contains(value), "{value}");
+        }
+        let small = screen(&app, 40, 14);
+        assert!(small.contains("amplía la ventana"));
+        assert!(small.contains("Menú Principal"));
+        let narrow = screen(&app, 40, 26);
+        assert!(narrow.contains("Compartida reservada: 1.0 GiB / 2.0 GiB"));
+        assert!(narrow.contains("RAM compartida (~): 3.0 GiB / 4.0 GiB"));
+        assert!(narrow.contains("VRAM dedicada: 6.0 GiB / 8.0 GiB"));
+    }
+
+    #[test]
+    fn gpu_errors_and_unavailable_memory_are_explicit() {
+        let mut app = app_with_hardware();
+        app.hardware.gpus = Ok(vec![GpuInfo {
+            name: "Intel Arc".into(),
+            memory: Ok(vec![GpuMemory { kind: GpuMemoryKind::Dedicated, available: None, total: 8 << 30 }]),
+        }]);
+        assert!(screen(&app, 80, 24).contains("VRAM dedicada: N/D / 8.0 GiB"));
+        app.hardware.gpus.as_mut().unwrap()[0].memory = Err("Sin permisos DRM".into());
+        assert!(screen(&app, 80, 24).contains("Memoria/tipo GPU: Error: Sin permisos DRM"));
+        app.hardware.gpus = Err("No se pudo consultar PCI".into());
+        assert!(screen(&app, 80, 24).contains("GPU: Error: No se pudo consultar PCI"));
+    }
 }

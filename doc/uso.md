@@ -1,135 +1,165 @@
-# Guía de uso
+# Usage Guide
 
 ---
 
-## Pantallas de la aplicación
+## Application Screens
 
-La aplicación tiene tres niveles de navegación que se transitan en orden:
+The application has three navigation levels traversed in order:
 
 ```
-Menú principal  →  Submenú  →  Salida del comando  →  Submenú  →  Menú principal
+Main menu  →  Submenu  →  Command output  →  Submenu  →  Main menu
 ```
 
 ---
 
-## Atajos de teclado
+## Keyboard Shortcuts
 
-### Globales (disponibles en cualquier pantalla)
+### Global (available on every screen)
 
-| Tecla | Acción |
+| Key | Action |
 |-------|--------|
-| `Ctrl+C` | Salir de la aplicación inmediatamente |
+| `Ctrl+C` | Exit the application immediately |
 
-### Menú principal
+### Main Menu
 
-| Tecla | Acción |
+Above the menu, a minimal hardware summary shows:
+
+- **Available/total RAM**, in binary units (GiB/MiB), using `MemAvailable`
+  rather than only free memory.
+- **Physical CPU cores and logical threads**, counting online CPUs and their
+  physical core groups across all sockets.
+- **GPUs**, identified by model and PCI address, with available/total memory and
+  separate labels for dedicated VRAM, reserved shared RAM, and dynamic shared RAM.
+
+The summary refreshes every second while the main menu is visible. It reads
+`/proc/meminfo`, CPU topology, and PCI/DRM information from the kernel. GPU models
+use the local `pci.ids` database if present; otherwise PCI identifiers are shown.
+Read or data errors are displayed explicitly instead of showing zero values.
+
+AMD (`amdgpu`) uses the DRM APU flag to distinguish reserved shared RAM from
+dedicated VRAM, and sysfs counters for available/total memory. Its dynamic shared
+RAM is the GTT pool limit, not additional physical memory. Shared availability
+(`~`) is an estimate capped by system `MemAvailable`; allocations are not
+guaranteed, and shared pools must not be added to system RAM.
+
+NVIDIA uses `nvidia-smi` from the installed driver, with a one-second timeout.
+Intel (`i915`) uses DRM memory regions: system regions are shared and local
+regions are dedicated. Free Intel dedicated VRAM is shown as **N/D**, because
+the unprivileged query does not provide reliable usage accounting.
+AMD and Intel queries require access to the GPU render node in `/dev/dri`, not
+root. Unsupported drivers (including `xe`) and inaccessible telemetry are
+reported explicitly; no memory type is guessed from the vendor or memory size.
+If all summary lines do not fit, an expansion hint preserves space for menu
+navigation.
+
+| Key | Action |
 |-------|--------|
-| `↑` / `k` | Mover cursor hacia arriba |
-| `↓` / `j` | Mover cursor hacia abajo |
-| `Enter` | Entrar en el submenú seleccionado |
-| `q` / `Q` | Salir de la aplicación |
+| `↑` / `k` | Move the cursor up |
+| `↓` / `j` | Move the cursor down |
+| `Enter` | Enter the selected submenu |
+| `q` / `Q` | Exit the application |
 
-### Dentro de un submenú
+### Inside a Submenu
 
-| Tecla | Acción |
+| Key | Action |
 |-------|--------|
-| `↑` / `k` | Mover cursor hacia arriba |
-| `↓` / `j` | Mover cursor hacia abajo |
-| `Enter` | Ejecutar el comando seleccionado |
-| `Esc` / `q` / `Retroceso` | Volver al menú principal |
+| `↑` / `k` | Move the cursor up |
+| `↓` / `j` | Move the cursor down |
+| `Enter` | Run the selected command |
+| `Esc` / `q` / `Backspace` | Return to the main menu |
 
-### Pantalla de salida (resultado de un comando)
+### Output Screen (command result)
 
-| Tecla | Acción |
+| Key | Action |
 |-------|--------|
-| `↑` / `k` | Scroll hacia arriba |
-| `↓` / `j` | Scroll hacia abajo |
-| `Enter` / `Esc` / `q` / `Retroceso` | Volver al submenú |
+| `↑` / `k` | Scroll up |
+| `↓` / `j` | Scroll down |
+| `Enter` / `Esc` / `q` / `Backspace` | Return to the submenu |
 
 ---
 
-## Submenús disponibles
+## Available Submenus
 
-### Red
+### Network
 
-Agrupa comandos de inspección de red y firewall.
+Groups network and firewall inspection commands.
 
-| Comando | Descripción | Herramienta |
+| Command | Description | Tool |
 |---------|-------------|-------------|
-| Interfaces de red | IPs y estado de cada interfaz | `ip addr show` |
-| Puertos en escucha | Puertos TCP/UDP activos con el proceso asociado | `ss -tulnp` |
-| Conexiones establecidas | Conexiones TCP activas | `ss -tnp` |
-| Tabla de rutas | Rutas de red activas | `ip route show` |
-| Firewall UFW | Reglas activas de UFW | `ufw status verbose` |
-| Reglas iptables | Tabla filter de iptables (requiere root) | `iptables -L` |
-| Configuración DNS | Servidores DNS configurados | `/etc/resolv.conf` |
-| Estadísticas de interfaces | Contadores de paquetes y bytes | `ip -s link` |
-| ARP / vecinos | Tabla ARP e IPv6 Neighbor Discovery | `ip neigh show` |
+| Network interfaces | IPs and status of each interface | `ip addr show` |
+| Listening ports | Active TCP/UDP ports with the associated process | `ss -tulnp` |
+| Established connections | Active TCP connections | `ss -tnp` |
+| Routing table | Active network routes | `ip route show` |
+| UFW firewall | Active UFW rules | `ufw status verbose` |
+| iptables rules | iptables filter table (requires root) | `iptables -L` |
+| DNS configuration | Configured DNS servers | `/etc/resolv.conf` |
+| Interface statistics | Packet and byte counters | `ip -s link` |
+| ARP / neighbors | ARP and IPv6 Neighbor Discovery table | `ip neigh show` |
 
 ---
 
-### Usuarios
+### Users
 
-Agrupa comandos para inspeccionar cuentas y sesiones del sistema.
+Groups commands for inspecting system accounts and sessions.
 
-| Comando | Descripción | Herramienta |
+| Command | Description | Tool |
 |---------|-------------|-------------|
-| Usuarios conectados | Sesiones activas en el sistema | `who -a` |
-| Actividad actual | Usuarios, tiempo activo y carga | `w` |
-| Últimos accesos | Historial de inicio de sesión (últimas 30) | `last -n 30` |
-| Intentos fallidos | Accesos fallidos (requiere root) | `lastb -n 20` |
-| Usuarios con shell de login | Cuentas que pueden iniciar sesión | `/etc/passwd` filtrado |
-| Todos los usuarios | Listado completo del sistema | `/etc/passwd` |
-| Grupos del sistema | Listado de grupos | `/etc/group` |
-| Identidad actual | UID, GID y grupos del proceso actual | `id` + `groups` |
-| Privilegios sudo | Comandos permitidos al usuario actual | `sudo -l` |
+| Logged-in users | Active sessions on the system | `who -a` |
+| Current activity | Users, uptime, and load | `w` |
+| Recent logins | Login history (last 30) | `last -n 30` |
+| Failed attempts | Failed logins (requires root) | `lastb -n 20` |
+| Users with login shells | Accounts that can log in | Filtered `/etc/passwd` |
+| All users | Complete system listing | `/etc/passwd` |
+| System groups | Group listing | `/etc/group` |
+| Current identity | UID, GID, and groups for the current process | `id` + `groups` |
+| Sudo privileges | Commands allowed for the current user | `sudo -l` |
 
 ---
 
-### Almacenamiento
+### Storage
 
-Agrupa comandos para inspeccionar discos, particiones y uso de espacio.
+Groups commands for inspecting disks, partitions, and space usage.
 
-| Comando | Descripción | Herramienta |
+| Command | Description | Tool |
 |---------|-------------|-------------|
-| Uso de disco | Espacio libre y usado por sistema de archivos | `df -h` |
-| Uso de inodos | Disponibilidad de inodos | `df -i` |
-| Dispositivos de bloque | Discos y particiones con detalles | `lsblk` |
-| Info de discos físicos | Modelo, tamaño y tipo de transporte | `lsblk -d` |
-| Puntos de montaje | Sistemas de archivos montados | `mount` |
-| Directorios más grandes | Top 20 directorios por tamaño | `du` |
-| Uso del directorio actual | Tamaño de cada entrada en el directorio actual | `du -sh *` |
-| Salud SMART de discos | Estado SMART (requiere smartmontools) | `smartctl` |
-| Cuota de usuario | Uso de cuota del usuario actual | `quota -s` |
+| Disk usage | Free and used space by filesystem | `df -h` |
+| Inode usage | Inode availability | `df -i` |
+| Block devices | Disks and partitions with details | `lsblk` |
+| Physical disk information | Model, size, and transport type | `lsblk -d` |
+| Mount points | Mounted filesystems | `mount` |
+| Largest directories | Top 20 directories by size | `du` |
+| Current directory usage | Size of each entry in the current directory | `du -sh *` |
+| Disk SMART health | SMART status (requires smartmontools) | `smartctl` |
+| User quota | Quota usage for the current user | `quota -s` |
 
 ---
 
-## Comportamiento de los comandos
+## Command Behavior
 
-- Los comandos se ejecutan con `sh -c "..."` al pulsar `Enter`.
-- La salida se muestra en pantalla completa con soporte de **scroll** (`↑↓`).
-- Se eliminan automáticamente los códigos de escape ANSI para mostrar texto limpio.
-- Si un comando produce salida en `stderr` (p.ej. requiere root), se muestra igualmente con el prefijo `[stderr]`.
-- Si el comando no produce ninguna salida, se muestra el mensaje `(Sin salida)`.
+- Commands are run with `sh -c "..."` when `Enter` is pressed.
+- Output is shown on a full-screen view with **scroll** support (`↑↓`).
+- ANSI escape codes are automatically removed to display clean text.
+- If a command writes to `stderr` (for example, because it requires root), it is also shown with the `[stderr]` prefix.
+- If a command produces no output, the message `(No output)` is shown.
 
 ---
 
-## Ejemplo de sesión completa
+## Complete Session Example
 
 ```
-1. Ejecuta la aplicación
+1. Run the application
    $ ./target/release/core_menu
 
-2. Usa ↓ para seleccionar "Red" y pulsa Enter
+2. Use ↓ to select "Network" and press Enter
 
-3. Usa ↓ para seleccionar "Puertos en escucha" y pulsa Enter
-   → El sistema ejecuta: ss -tulnp
-   → La salida se muestra en pantalla
-   → Usa ↑↓ para hacer scroll si la salida es larga
+3. Use ↓ to select "Listening ports" and press Enter
+   → The system runs: ss -tulnp
+   → The output is shown on screen
+   → Use ↑↓ to scroll if the output is long
 
-4. Pulsa Esc para volver al submenú "Red"
+4. Press Esc to return to the "Network" submenu
 
-5. Pulsa Esc para volver al menú principal
+5. Press Esc to return to the main menu
 
-6. Selecciona "Salir" o pulsa q para cerrar
+6. Select "Exit" or press q to close
 ```

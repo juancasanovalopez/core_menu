@@ -53,6 +53,7 @@
 //! ```
 
 mod app;
+mod hardware;
 mod submenus;
 mod ui;
 

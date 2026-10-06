@@ -1,34 +1,34 @@
-# Instalación y ejecución
+# Installation and Execution
 
 ---
 
-## Requisitos
+## Requirements
 
-| Requisito | Versión mínima | Notas |
+| Requirement | Minimum version | Notes |
 |-----------|---------------|-------|
-| Rust + Cargo | 1.70 | Instalado vía [rustup](https://rustup.rs) |
-| Terminal | Cualquiera | xterm, GNOME Terminal, Alacritty, tmux, etc. |
-| Sistema operativo | Linux (cualquier distribución) | — |
+| Rust + Cargo | 1.70 | Installed through [rustup](https://rustup.rs) |
+| Terminal | Any | xterm, GNOME Terminal, Alacritty, tmux, etc. |
+| Operating system | Linux (any distribution) | — |
 
-> **¿Por qué 1.70?** Es la versión estable más antigua compatible con las dependencias declaradas (`ratatui 0.26`, `crossterm 0.27`, `anyhow 1.0`).
-> El proyecto fue desarrollado y verificado con **rustc 1.94.1**.
+> **Why 1.70?** It is the oldest stable version compatible with the declared dependencies (`ratatui 0.26`, `crossterm 0.27`, `anyhow 1.0`).
+> The project was developed and verified with **rustc 1.94.1**.
 
 ---
 
-## 1. Instalar Rust (si no está instalado)
+## 1. Install Rust (if not already installed)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-Sigue las instrucciones del instalador (opción predeterminada recomendada).  
-Después, activa el entorno en la sesión actual:
+Follow the installer instructions (the default option is recommended).
+Then activate the environment in the current session:
 
 ```bash
 source "$HOME/.cargo/env"
 ```
 
-Verifica la instalación:
+Verify the installation:
 
 ```bash
 rustc --version
@@ -37,44 +37,44 @@ cargo --version
 
 ---
 
-## 2. Obtener el código fuente
+## 2. Obtain the Source Code
 
-### Opción A — Clonar el repositorio (si está en Git)
+### Option A — Clone the repository (if hosted in Git)
 
 ```bash
-git clone <URL_DEL_REPOSITORIO>
+git clone <REPOSITORY_URL>
 cd core_menu
 ```
 
-### Opción B — Desde una copia local
+### Option B — From a local copy
 
 ```bash
-cd /ruta/a/core_menu
+cd /path/to/core_menu
 ```
 
 ---
 
-## 3. Compilar
+## 3. Build
 
-### Modo desarrollo (más rápido de compilar, binario sin optimizar)
+### Development mode (faster to compile, unoptimized binary)
 
 ```bash
 cargo build
 ```
 
-El binario se genera en:
+The binary is generated at:
 
 ```
 target/debug/core_menu
 ```
 
-### Modo release (recomendado para uso diario, binario optimizado ~963 KB)
+### Release mode (recommended for daily use, optimized binary ~963 KB)
 
 ```bash
 cargo build --release
 ```
 
-El binario se genera en:
+The binary is generated at:
 
 ```
 target/release/core_menu
@@ -82,45 +82,45 @@ target/release/core_menu
 
 ---
 
-## 4. Ejecutar
+## 4. Run
 
-### Desde el directorio del proyecto
+### From the project directory
 
 ```bash
-# Modo debug
+# Debug mode
 ./target/debug/core_menu
 
-# Modo release (recomendado)
+# Release mode (recommended)
 ./target/release/core_menu
 ```
 
-### Atajo con cargo
+### Cargo shortcut
 
 ```bash
-cargo run           # compila en debug y ejecuta
-cargo run --release # compila en release y ejecuta
+cargo run           # build in debug mode and run
+cargo run --release # build in release mode and run
 ```
 
 ---
 
-## 5. Instalación global (opcional)
+## 5. Global Installation (optional)
 
-Para ejecutar `core_menu` desde cualquier directorio sin especificar la ruta:
+To run `core_menu` from any directory without specifying its path:
 
 ```bash
 cargo install --path .
 ```
 
-Esto copia el binario a `~/.cargo/bin/core_menu`.  
-Asegúrate de que `~/.cargo/bin` esté en tu `PATH` (el instalador de rustup lo configura automáticamente).
+This copies the binary to `~/.cargo/bin/core_menu`.
+Make sure `~/.cargo/bin` is in your `PATH` (the rustup installer configures it automatically).
 
-Verificar que está disponible globalmente:
+Verify that it is available globally:
 
 ```bash
 core_menu
 ```
 
-Para desinstalarlo:
+To uninstall it:
 
 ```bash
 cargo uninstall core_menu
@@ -128,36 +128,36 @@ cargo uninstall core_menu
 
 ---
 
-## 6. Solución de problemas
+## 6. Troubleshooting
 
-### El terminal queda en estado raro tras un error
+### The terminal is left in an unusual state after an error
 
-La aplicación instala un hook de pánico que restaura el terminal automáticamente.  
-Si aun así la pantalla queda en modo raw, ejecuta:
+The application installs a panic hook that restores the terminal automatically.
+If the screen remains in raw mode, run:
 
 ```bash
 reset
 ```
 
-### La terminal no muestra colores o caracteres especiales
+### The terminal does not show colors or special characters
 
-Asegúrate de que la variable `TERM` está configurada correctamente:
+Make sure the `TERM` variable is configured correctly:
 
 ```bash
 echo $TERM
-# Esperado: xterm-256color, screen-256color, tmux-256color...
+# Expected: xterm-256color, screen-256color, tmux-256color...
 ```
 
-Si la variable no está definida, fuerza un valor compatible antes de ejecutar:
+If the variable is not set, force a compatible value before running:
 
 ```bash
 TERM=xterm-256color ./target/release/core_menu
 ```
 
-### Algunos comandos devuelven "Se requieren permisos root"
+### Some commands report "root permissions are required"
 
-Ciertos comandos del sistema (iptables, lastb, etc.) requieren privilegios elevados.  
-Ejecuta la aplicación con `sudo` solo si confías en el entorno:
+Some system commands (iptables, lastb, etc.) require elevated privileges.
+Run the application with `sudo` only if you trust the environment:
 
 ```bash
 sudo ./target/release/core_menu
@@ -165,10 +165,10 @@ sudo ./target/release/core_menu
 
 ### Error: `command not found: cargo`
 
-El entorno de Rust no está activado en la sesión actual. Ejecuta:
+The Rust environment is not active in the current session. Run:
 
 ```bash
 source "$HOME/.cargo/env"
 ```
 
-Y añade esa línea a tu `~/.bashrc` o `~/.zshrc` para que se active automáticamente.
+Add that line to `~/.bashrc` or `~/.zshrc` to activate it automatically.

@@ -14,7 +14,9 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
+use std::time::{Duration, Instant};
 
+use crate::hardware::HardwareInfo;
 use crate::submenus::{get_submenus, ChartBar, CommandKind, SubMenu};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +88,8 @@ pub struct App {
     pub output_scroll: u16,
     /// Lista de submenús registrados (orden = orden en pantalla).
     pub submenus: Vec<SubMenu>,
+    pub hardware: HardwareInfo,
+    hardware_updated_at: Instant,
 }
 
 impl App {
@@ -97,6 +101,8 @@ impl App {
             sub_cursor:    0,
             output_scroll: 0,
             submenus:      get_submenus(),
+            hardware:      HardwareInfo::read(),
+            hardware_updated_at: Instant::now(),
         }
     }
 
@@ -301,8 +307,17 @@ pub fn run() -> Result<()> {
 
     // ── Bucle principal ──────────────────────────────────────────────────────
     loop {
+        if matches!(app.mode, AppMode::MainMenu)
+            && app.hardware_updated_at.elapsed() >= Duration::from_secs(1)
+        {
+            app.hardware = HardwareInfo::read();
+            app.hardware_updated_at = Instant::now();
+        }
         term.draw(|f| crate::ui::render(f, &app))?;
 
+        if !event::poll(Duration::from_millis(250))? {
+            continue;
+        }
         if let Event::Key(key) = event::read()? {
             // Ctrl+C global: salir desde cualquier modo
             if key.modifiers.contains(KeyModifiers::CONTROL)

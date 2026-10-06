@@ -1,52 +1,66 @@
-# Guía de extensión
+# Extension Guide
 
-Cómo ampliar `core_menu` añadiendo nuevos submenús y comandos sin modificar la lógica central.
+How to extend `core_menu` by adding new submenus and commands without modifying the core logic.
 
 ---
 
-## Arquitectura del sistema de menús
+## Menu System Architecture
 
 ```
 src/submenus/
-├── mod.rs          ← tipos centrales + registro get_submenus() + run_shell()
-├── network.rs      ← submenú "Red"
-├── users.rs        ← submenú "Usuarios"
-├── storage.rs      ← submenú "Almacenamiento"
-└── <nuevo>.rs      ← ← ← aquí añades el tuyo
+├── mod.rs          ← core types + get_submenus() registry + run_shell()
+├── network.rs      ← "Network" submenu
+├── users.rs        ← "Users" submenu
+├── storage.rs      ← "Storage" submenu
+└── <new>.rs        ← ← ← add yours here
 ```
 
-Cada submenú es un módulo Rust independiente que exporta una única función pública `create() -> SubMenu`.  
-El registro central en `mod.rs` es el único punto de integración.
+Each submenu is an independent Rust module that exports a single public function, `create() -> SubMenu`.
+The central registry in `mod.rs` is the only integration point.
+
+### Hardware Summary Architecture
+
+The main menu summary is separate from the commands in `src/submenus/`.
+[src/hardware.rs](../src/hardware.rs) coordinates collection and re-exports the
+data types used by the application and UI:
+
+- [src/hardware/memory.rs](../src/hardware/memory.rs): RAM data and parsing tests.
+- [src/hardware/cpu.rs](../src/hardware/cpu.rs): CPU topology and counting tests.
+- [src/hardware/gpu.rs](../src/hardware/gpu.rs): GPU detection, memory queries,
+  and their tests.
+
+Each collector is visible only to its parent module. RAM is collected before
+GPU data because shared GPU memory estimates depend on available system RAM.
 
 ---
 
-## Caso 1 — Añadir un comando a un submenú existente
+## Case 1 — Add a Command to an Existing Submenu
 
-Abre el archivo del submenú correspondiente (p.ej. [src/submenus/network.rs](../src/submenus/network.rs)) y añade un `MenuItem::new(...)` dentro del `vec![]` de la función `create()`:
+Open the corresponding submenu file (for example, [src/submenus/network.rs](../src/submenus/network.rs)) and add a `MenuItem::new(...)` inside the `vec![]` in the `create()` function:
 
 ```rust
 MenuItem::new(
-    "Nombre visible",          // ≤ 32 caracteres recomendado
-    "Descripción breve",       // ≤ 42 caracteres recomendado
-    || run_shell("comando"),   // función que ejecuta el comando
+    "Display name",            // ≤ 32 characters recommended
+    "Short description",       // ≤ 42 characters recommended
+    || run_shell("command"),   // function that runs the command
 ),
 ```
 
-### Ejemplo real — añadir "ping a gateway" en network.rs
+### Real Example — Add "ping gateway" to network.rs
 
 ```rust
 MenuItem::new(
-    "Ping al gateway",
-    "Comprueba conectividad con la puerta de enlace",
+    "Ping gateway",
+    "Check connectivity to the gateway",
     || run_shell(
         "gw=$(ip route | awk '/default/{print $3; exit}'); \
          ping -c 4 \"$gw\" 2>/dev/null \
-         || echo 'No se encontró gateway predeterminado'",
+         || echo 'No default gateway found'",
     ),
 ),
 ```
 
-Recompila y el comando aparece automáticamente en el submenú:
+Rebuild the application and the command appears automatically in the submenu:
 
 ```bash
 cargo build --release
@@ -54,54 +68,54 @@ cargo build --release
 
 ---
 
-## Caso 2 — Añadir un nuevo submenú completo
+## Case 2 — Add a Complete New Submenu
 
-### Paso 1 — Crear el archivo del submenú
+### Step 1 — Create the Submenu File
 
-Crea `src/submenus/<nombre>.rs`.  
-Puedes copiar `network.rs` como plantilla y adaptar el contenido.
+Create `src/submenus/<name>.rs`.
+You can copy `network.rs` as a template and adapt its contents.
 
-Estructura mínima:
+Minimal structure:
 
 ```rust
-//! # Submenú: <Nombre>
+//! # Submenu: <Name>
 //!
-//! Breve descripción de qué agrupa este submenú.
+//! Brief description of what this submenu groups.
 
 use super::{run_shell, MenuItem, SubMenu};
 
-/// Construye y devuelve el submenú de <nombre>.
+/// Build and return the <name> submenu.
 pub fn create() -> SubMenu {
     SubMenu::new(
-        "<Nombre>",              // aparece en el menú principal
-        "<Descripción corta>",   // aparece junto al nombre
+        "<Name>",                // appears in the main menu
+        "<Short description>",   // appears next to the name
         vec![
             MenuItem::new(
-                "Primer comando",
-                "Descripción del primer comando",
-                || run_shell("comando_shell"),
+                "First command",
+                "Description of the first command",
+                || run_shell("shell_command"),
             ),
-            // Añade más MenuItem::new(...) aquí
+            // Add more MenuItem::new(...) entries here
         ],
     )
 }
 ```
 
-### Paso 2 — Declarar el módulo en mod.rs
+### Step 2 — Declare the Module in mod.rs
 
-Abre [src/submenus/mod.rs](../src/submenus/mod.rs) y añade la declaración del módulo en la sección indicada:
+Open [src/submenus/mod.rs](../src/submenus/mod.rs) and add the module declaration in the indicated section:
 
 ```rust
-// ── Módulos de submenús ───────────────────────────────────────────────────────
+// ── Submenu modules ───────────────────────────────────────────────────────────
 pub mod network;
 pub mod storage;
 pub mod users;
-pub mod <nombre>;   // ← añade aquí
+pub mod <name>;     // ← add here
 ```
 
-### Paso 3 — Registrar el submenú en get_submenus()
+### Step 3 — Register the Submenu in get_submenus()
 
-En el mismo archivo `mod.rs`, añade la llamada a `create()` dentro de `get_submenus()`:
+In the same `mod.rs` file, add the `create()` call inside `get_submenus()`:
 
 ```rust
 pub fn get_submenus() -> Vec<SubMenu> {
@@ -109,27 +123,27 @@ pub fn get_submenus() -> Vec<SubMenu> {
         network::create(),
         users::create(),
         storage::create(),
-        <nombre>::create(),   // ← añade aquí
+        <name>::create(),     // ← add here
     ]
 }
 ```
 
-El **orden del `vec![]` determina el orden de aparición** en el menú principal.
+The **order of the `vec![]` determines the display order** in the main menu.
 
-### Paso 4 — Compilar
+### Step 4 — Build
 
 ```bash
 cargo build --release
 ./target/release/core_menu
 ```
 
-El nuevo submenú aparece en el menú principal de forma automática.
+The new submenu appears in the main menu automatically.
 
 ---
 
-## Referencia de la función run_shell()
+## run_shell() Function Reference
 
-Definida en `src/submenus/mod.rs`. Ejecuta una cadena con `sh -c "..."` y devuelve la salida como `String`.
+Defined in `src/submenus/mod.rs`. It runs a string with `sh -c "..."` and returns the output as a `String`.
 
 ```rust
 pub fn run_shell(cmd: &str) -> String
@@ -137,28 +151,28 @@ pub fn run_shell(cmd: &str) -> String
 
 Comportamiento:
 
-| Situación | Resultado devuelto |
+| Situation | Returned result |
 |-----------|--------------------|
-| Comando con salida en stdout | Texto de stdout |
-| stdout vacío pero stderr con contenido | `[stderr]:\n<texto>` |
-| Comando sin ninguna salida | `(Sin salida)` |
-| Error al invocar el proceso | `Error al ejecutar el comando: <detalle>` |
+| Command with stdout output | stdout text |
+| stdout is empty but stderr has content | `[stderr]:\n<text>` |
+| Command produces no output | `(No output)` |
+| Error invoking the process | `Error running command: <details>` |
 
-Los códigos de escape ANSI se eliminan automáticamente antes de devolver el texto.
+ANSI escape codes are automatically removed before returning the text.
 
-> **Nota de seguridad:** Usa `run_shell` solo con cadenas de comando **literales** definidas en el código fuente. Nunca construyas el argumento `cmd` con datos introducidos por el usuario.
+> **Security note:** Use `run_shell` only with **literal** command strings defined in the source code. Never build the `cmd` argument from user-provided data.
 
 ---
 
-## Referencia de tipos
+## Type Reference
 
 ### SubMenu
 
 ```rust
 pub struct SubMenu {
-    pub name:        &'static str,   // nombre en el menú principal
-    pub description: &'static str,   // descripción junto al nombre
-    pub items:       Vec<MenuItem>,  // lista de comandos
+    pub name:        &'static str,   // name in the main menu
+    pub description: &'static str,   // description next to the name
+    pub items:       Vec<MenuItem>,  // list of commands
 }
 ```
 
@@ -166,55 +180,55 @@ pub struct SubMenu {
 
 ```rust
 pub struct MenuItem {
-    pub name:        &'static str,   // nombre visible en el submenú
-    pub description: &'static str,   // descripción junto al nombre
-    pub command:     fn() -> String, // función que ejecuta el comando
+    pub name:        &'static str,   // display name in the submenu
+    pub description: &'static str,   // description next to the name
+    pub command:     fn() -> String, // function that runs the command
 }
 ```
 
-El campo `command` es un **puntero de función** (no un closure con captura). Todas las lambdas del estilo `|| run_shell("...")` cumplen este requisito mientras no capturen variables del entorno.
+The `command` field is a **function pointer** (not a capturing closure). All closures in the form `|| run_shell("...")` meet this requirement as long as they do not capture environment variables.
 
 ---
 
-## Ejemplo completo — submenú "Procesos"
+## Complete Example — "Processes" Submenu
 
 `src/submenus/processes.rs`:
 
 ```rust
-//! # Submenú: Procesos
+//! # Submenu: Processes
 //!
-//! Inspección de procesos en ejecución y carga del sistema.
+//! Inspect running processes and system load.
 
 use super::{run_shell, MenuItem, SubMenu};
 
 pub fn create() -> SubMenu {
     SubMenu::new(
-        "Procesos",
-        "Procesos en ejecución y carga del sistema",
+        "Processes",
+        "Running processes and system load",
         vec![
             MenuItem::new(
                 "Top CPU",
-                "20 procesos que más CPU consumen",
+                "20 processes with the highest CPU usage",
                 || run_shell("ps aux --sort=-%cpu | head -21"),
             ),
             MenuItem::new(
-                "Top memoria",
-                "20 procesos que más RAM consumen",
+                "Top memory",
+                "20 processes with the highest RAM usage",
                 || run_shell("ps aux --sort=-%mem | head -21"),
             ),
             MenuItem::new(
-                "Carga del sistema",
-                "Uptime y promedios de carga (uptime)",
+                "System load",
+                "Uptime and load averages (uptime)",
                 || run_shell("uptime"),
             ),
             MenuItem::new(
-                "Árbol de procesos",
-                "Árbol de procesos (pstree -p)",
+                "Process tree",
+                "Process tree (pstree -p)",
                 || run_shell("pstree -p 2>/dev/null || ps axjf"),
             ),
             MenuItem::new(
-                "Servicios systemd activos",
-                "Unidades de sistema en estado 'running'",
+                "Active systemd services",
+                "System units in the 'running' state",
                 || run_shell("systemctl list-units --type=service --state=running --no-pager"),
             ),
         ],
@@ -235,7 +249,7 @@ pub fn get_submenus() -> Vec<SubMenu> {
         network::create(),
         users::create(),
         storage::create(),
-        processes::create(),   // ← registrar
+        processes::create(),   // ← register
     ]
 }
 ```

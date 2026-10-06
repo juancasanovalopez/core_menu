@@ -1,207 +1,259 @@
-# core_menu — Documentación
+# core_menu — Documentation
 
-Gestor de sistema Linux con interfaz de menú interactiva (TUI) ejecutable en cualquier terminal compatible.
+Linux system manager with an interactive terminal user interface (TUI) that runs in any compatible terminal.
 
 ---
 
-## Índice
+## Contents
 
-| Documento | Descripción |
+| Document | Description |
 |-----------|-------------|
-| [instalacion.md](doc/instalacion.md) | Requisitos, compilación e instalación del binario |
-| [uso.md](doc/uso.md) | Navegación por los menús, atajos de teclado y submenús disponibles |
-| [extension.md](doc/extension.md) | Cómo añadir nuevos submenús y comandos al sistema |
+| [instalacion.md](doc/instalacion.md) | Requirements, compilation, and binary installation |
+| [uso.md](doc/uso.md) | Menu navigation, keyboard shortcuts, and available submenus |
+| [extension.md](doc/extension.md) | How to add new submenus and system commands |
 
 ---
 
-## Vista rápida
+## Quick Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│               CORE MENU  —  Gestor de Sistema Linux     │
+│               CORE MENU  —  Linux System Manager        │
 ├─────────────────────────────────────────────────────────┤
 │                                                         │
-│  ▶ Red               Estado de red y firewall           │
-│    Usuarios          Usuarios y sesiones del sistema    │
-│    Almacenamiento    Discos, particiones y uso espacio  │
-│    Memoria           Estado y uso de la memoria RAM     │
-│    CPU               Procesador, núcleos y temperatura  │
-│    GPU               Tarjeta gráfica, VRAM y uso de GPU │
-│    Virtualización    KVM, Docker/Podman, contenedores y redes │
+│  ▶ Network            Network and firewall status        │
+│    Users              System users and sessions          │
+│    Storage            Disks, partitions, and space usage │
+│    Memory             RAM status and usage               │
+│    CPU                Processor, cores, and temperature  │
+│    GPU                Graphics card, VRAM, and GPU usage │
+│    Virtualization     KVM, Docker/Podman, containers     │
 │    ──────────────────────────────────────────────────   │
-│    Salir                                                │
+│    Exit                                                 │
 │                                                         │
 ├─────────────────────────────────────────────────────────┤
-│    ↑↓/jk: Navegar   Enter: Seleccionar   q: Salir       │
+│    ↑↓/jk: Navigate   Enter: Select   q: Exit            │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Guía de uso
+## Architecture
 
-### Arranque
+`core_menu` separates the application loop, navigation state, TUI rendering,
+and commands grouped by system area:
 
-```bash
-./core_menu          # binario en el directorio actual
-# o si está en el PATH:
-core_menu
+```mermaid
+flowchart TD
+    Main["main.rs<br/>Entry point"] --> Run["app::run()<br/>Initializes and restores the terminal"]
+
+    subgraph EventLoop["Event loop"]
+        Read["crossterm<br/>Reads keyboard events"] --> Dispatch["Dispatcher by AppMode"]
+        Draw["ratatui Terminal"]
+    end
+
+    Run --> EventLoop
+    Dispatch --> State["App<br/>Global state and cursors"]
+    State --> Mode{"AppMode"}
+    Mode --> MainMenu["MainMenu<br/>Submenu list"]
+    Mode --> SubMenu["SubMenu<br/>Command list"]
+    Mode --> Input["InputPrompt<br/>Command parameter"]
+    Mode --> Output["Output<br/>Scrollable output"]
+    Mode --> Chart["Chart<br/>Usage bars"]
+
+    Mode --> Draw
+    Draw --> UI["ui.rs<br/>Renders header, content, and help"]
+    UI --> Terminal["Compatible terminal"]
+
+    MainMenu --> Registry["submenus::get_submenus()<br/>"]
+    Registry --> Definitions["SubMenu + MenuItem + CommandKind"]
+    Definitions --> Areas["network | users | storage | memory<br/>cpu | gpu | containers"]
+    SubMenu --> Areas
+    Input --> Areas
+    Areas --> Commands["Linux commands<br/>ip, ss, df, free, lscpu, ..."]
+    Commands --> Output
+    Areas --> ChartData["ChartBar<br/>used / total"]
+    ChartData --> Chart
+
+    Output --> SubMenu
+    Input --> Output
+    Chart --> SubMenu
+    SubMenu --> MainMenu
+    MainMenu --> Exit["Exit / Ctrl+C"]
+    Exit --> Restore["Restores the terminal and terminates"]
 ```
 
-La aplicación ocupa la pantalla completa en modo alternativo de terminal y la restaura al salir.
-
-### Navegación
-
-| Tecla | Acción |
-|-------|--------|
-| `↑` / `k` | Mover cursor arriba |
-| `↓` / `j` | Mover cursor abajo |
-| `Enter` | Seleccionar opción / ejecutar comando |
-| `Esc` / `q` | Volver al nivel anterior |
-| `Ctrl+C` | Salir inmediatamente |
-
-La navegación funciona igual en el menú principal, dentro de los submenús y en la pantalla de salida de un comando.
-
-### Pantallas
-
-**Menú principal** — lista de submenús disponibles. Selecciona uno con `Enter`.
-
-**Submenú** — lista de comandos del área elegida. Cada entrada muestra nombre y descripción. Pulsa `Enter` para ejecutar.
-
-**Salida de comando** — texto devuelto por el comando. Desplázate con `↑`/`↓` o `j`/`k`. Vuelve con `Esc`.
-
-**Entrada de parámetro** — algunos comandos solicitan un valor antes de ejecutarse (p.ej. índice de módem, ID de contenedor). Escribe el valor y confirma con `Enter`. Se muestra un valor predeterminado que puedes conservar o sobreescribir.
-
-**Gráfico de barras** — comandos de almacenamiento y memoria pueden mostrar una pantalla de barras con código de color:
-- Verde: uso < 70 %
-- Amarillo: uso entre 70 % y 90 %
-- Rojo: uso ≥ 90 %
+The main flow is `MainMenu -> SubMenu -> Output` (or `InputPrompt` /
+`Chart`) and returns to the submenu after displaying the result. To extend the
+application, implement each new area as a module under `src/submenus/` and
+register it in `get_submenus()`.
 
 ---
 
-## Submenús disponibles
+## Usage Guide
 
-### Red
-Inspección del estado de la red y el firewall.
+### Starting the Application
 
-| Comando | Descripción |
+```bash
+./core_menu          # binary in the current directory
+# or if it is in PATH:
+core_menu
+```
+
+The application uses the terminal's alternate screen and restores it on exit.
+
+### Navigation
+
+| Key | Action |
+|-------|--------|
+| `↑` / `k` | Move the cursor up |
+| `↓` / `j` | Move the cursor down |
+| `Enter` | Select an option / run a command |
+| `Esc` / `q` | Return to the previous level |
+| `Ctrl+C` | Exit immediately |
+
+Navigation works the same way in the main menu, submenus, and command output screen.
+
+### Screens
+
+**Main menu** — list of available submenus. Select one with `Enter`.
+
+**Submenu** — list of commands for the selected area. Each entry shows a name and description. Press `Enter` to run it.
+
+**Command output** — text returned by the command. Scroll with `↑`/`↓` or `j`/`k`. Return with `Esc`.
+
+**Parameter input** — some commands request a value before running (for example, a modem index or container ID). Enter the value and confirm with `Enter`. A default value is shown and can be kept or replaced.
+
+**Bar chart** — storage and memory commands can show a color-coded bar screen:
+- Green: usage < 70%
+- Yellow: usage between 70% and 90%
+- Red: usage ≥ 90%
+
+---
+
+## Available Submenus
+
+### Network
+Inspect network and firewall status.
+
+| Command | Description |
 |---------|-------------|
-| Interfaces de red | Interfaces y sus IPs (`ip addr`) |
-| Puertos en escucha | Puertos TCP/UDP activos (`ss -tulnp`) |
-| Conexiones establecidas | Conexiones TCP activas (`ss -tnp`) |
-| Tabla de rutas | Rutas de red activas (`ip route show`) |
-| Firewall UFW | Reglas activas de UFW |
-| Reglas iptables | Tabla filter de iptables (requiere root) |
-| Configuración DNS | Servidores DNS configurados |
-| Estadísticas de interfaces | Contadores de paquetes/bytes |
-| ARP / vecinos | Tabla ARP e IPv6 ND |
-| Módems detectados | Lista módems gestionados por ModemManager |
-| Estado del módem | Info detallada del módem por índice *(entrada de parámetro)* |
+| Network interfaces | Interfaces and their IPs (`ip addr`) |
+| Listening ports | Active TCP/UDP ports (`ss -tulnp`) |
+| Established connections | Active TCP connections (`ss -tnp`) |
+| Routing table | Active network routes (`ip route show`) |
+| UFW firewall | Active UFW rules |
+| iptables rules | iptables filter table (requires root) |
+| DNS configuration | Configured DNS servers |
+| Interface statistics | Packet/byte counters |
+| ARP / neighbors | ARP and IPv6 ND table |
+| Detected modems | Modems managed by ModemManager |
+| Modem status | Detailed modem information by index *(parameter input)* |
 
-### Usuarios
-Gestión de usuarios, grupos y sesiones.
+### Users
+Manage users, groups, and sessions.
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| Usuarios conectados | Sesiones activas (`who -a`) |
-| Actividad actual | Usuarios, tiempo y procesos activos (`w`) |
-| Últimos accesos | Historial de login (`last -n 30`) |
-| Intentos fallidos | Accesos fallidos (`lastb`, requiere root) |
-| Usuarios con shell de login | Cuentas que pueden iniciar sesión |
-| Todos los usuarios | Listado completo de `/etc/passwd` |
-| Grupos del sistema | Listado de `/etc/group` |
-| Identidad actual | UID, GID y grupos del proceso actual |
-| Privilegios sudo | Comandos permitidos al usuario (`sudo -l`) |
+| Logged-in users | Active sessions (`who -a`) |
+| Current activity | Users, uptime, and active processes (`w`) |
+| Recent logins | Login history (`last -n 30`) |
+| Failed attempts | Failed logins (`lastb`, requires root) |
+| Users with login shells | Accounts that can log in |
+| All users | Complete `/etc/passwd` listing |
+| System groups | `/etc/group` listing |
+| Current identity | UID, GID, and groups for the current process |
+| Sudo privileges | Commands allowed for the user (`sudo -l`) |
 
-### Almacenamiento
-Discos, particiones, sistemas de archivos y salud de dispositivos.
+### Storage
+Disks, partitions, filesystems, and device health.
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| Uso de disco | Espacio libre/usado por sistema de archivos (`df -h`) |
-| Uso de inodos | Disponibilidad de inodos (`df -i`) |
-| Dispositivos de bloque | Discos y particiones con detalles (`lsblk`) |
-| Info de discos físicos | Modelo, tamaño y tipo de transporte |
-| Puntos de montaje | Sistemas de archivos montados |
-| Directorios más grandes | Top 20 directorios por tamaño |
-| Uso del directorio actual | Tamaño de cada entrada en `$PWD` |
-| Salud SMART de discos | Estado SMART (requiere `smartmontools`) |
-| Gráfico de uso | *(pantalla de barras)* Uso por sistema de archivos |
+| Disk usage | Free/used space by filesystem (`df -h`) |
+| Inode usage | Inode availability (`df -i`) |
+| Block devices | Disks and partitions with details (`lsblk`) |
+| Physical disk information | Model, size, and transport type |
+| Mount points | Mounted filesystems |
+| Largest directories | Top 20 directories by size |
+| Current directory usage | Size of each entry in `$PWD` |
+| Disk SMART health | SMART status (requires `smartmontools`) |
+| Usage chart | *(bar screen)* Usage by filesystem |
 
-### Memoria
-Estado y uso de la RAM, swap y caché del kernel.
+### Memory
+RAM, swap, and kernel cache status and usage.
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| Resumen de memoria | RAM y swap libre/usada (`free -h`) |
-| Resumen detallado | RAM en MB con columnas extendidas |
-| Info completa del kernel | Todos los campos de `/proc/meminfo` |
-| Memoria disponible | RAM total, libre y disponible |
-| Estado del swap | Particiones y archivos de intercambio |
-| Top procesos por RAM | 20 procesos con mayor consumo |
-| Procesos con RSS > 100 MB | Procesos que usan más de 100 MB |
-| Uso de caché del kernel | Buffers, caché de página y slab |
-| Gráfico de memoria | *(pantalla de barras)* RAM y swap |
+| Memory summary | Free/used RAM and swap (`free -h`) |
+| Detailed summary | RAM in MB with extended columns |
+| Complete kernel information | All fields from `/proc/meminfo` |
+| Available memory | Total, free, and available RAM |
+| Swap status | Swap partitions and files |
+| Top processes by RAM | 20 processes with the highest usage |
+| Processes with RSS > 100 MB | Processes using more than 100 MB |
+| Kernel cache usage | Buffers, page cache, and slab |
+| Memory chart | *(bar screen)* RAM and swap |
 
 ### CPU
-Estado del procesador, rendimiento por núcleo y temperatura.
+Processor status, per-core performance, and temperature.
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| Información del procesador | Modelo, núcleos y frecuencias (`lscpu`) |
-| Carga del sistema | Promedios de carga 1, 5 y 15 min (`uptime`) |
-| Procesos activos (CPU) | Top 20 procesos ordenados por uso de CPU |
-| Estadísticas de CPU (vmstat) | Actividad de CPU en 5 muestras de 1 s |
-| Frecuencia por núcleo | Frecuencia actual de cada núcleo (MHz) |
-| Temperatura de la CPU | Sensores de temperatura (`sensors` / sysfs) |
-| Caché del procesador | Tamaños de L1, L2 y L3 (`lscpu -C`) |
-| Interrupciones por núcleo | Primeras 30 líneas de `/proc/interrupts` |
-| Uso por núcleo (gráfico) | *(pantalla de barras)* Uso de CPU por núcleo — muestra de 250 ms |
+| Processor information | Model, cores, and frequencies (`lscpu`) |
+| System load | 1, 5, and 15-minute load averages (`uptime`) |
+| Active processes (CPU) | Top 20 processes sorted by CPU usage |
+| CPU statistics (vmstat) | CPU activity in five 1-second samples |
+| Per-core frequency | Current frequency of each core (MHz) |
+| CPU temperature | Temperature sensors (`sensors` / sysfs) |
+| Processor cache | L1, L2, and L3 sizes (`lscpu -C`) |
+| Per-core interrupts | First 30 lines of `/proc/interrupts` |
+| Per-core usage (chart) | *(bar screen)* CPU usage per core, sampled for 250 ms |
 
 ### GPU
-Estado de la tarjeta gráfica, VRAM y temperatura. Compatible con NVIDIA (`nvidia-smi`) y AMD (driver `amdgpu` vía sysfs).
+Graphics card, VRAM, and temperature status. Supports NVIDIA (`nvidia-smi`) and AMD (the `amdgpu` driver via sysfs).
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| GPUs detectadas | Tarjetas gráficas instaladas (`lspci`) |
-| Driver activo | Driver en uso por cada GPU |
-| Estado NVIDIA (nvidia-smi) | Resumen completo de `nvidia-smi` |
-| Procesos en GPU NVIDIA | Procesos que usan la GPU NVIDIA |
-| Estado AMD (sysfs) | Uso, VRAM y temperatura via driver `amdgpu` |
-| Temperatura GPU | Temperatura vía `sensors` o sysfs |
-| Dispositivos DRM | Nodos de renderizado del kernel (`/dev/dri`) |
-| Uso de GPU (gráfico) | *(pantalla de barras)* Utilización y VRAM por GPU |
+| Detected GPUs | Installed graphics cards (`lspci`) |
+| Active driver | Driver used by each GPU |
+| NVIDIA status (nvidia-smi) | Complete `nvidia-smi` summary |
+| Processes on NVIDIA GPU | Processes using the NVIDIA GPU |
+| AMD status (sysfs) | Usage, VRAM, and temperature via the `amdgpu` driver |
+| GPU temperature | Temperature via `sensors` or sysfs |
+| DRM devices | Kernel rendering nodes (`/dev/dri`) |
+| GPU usage (chart) | *(bar screen)* Utilization and VRAM per GPU |
 
-### Virtualización
-Gestión de KVM y motores de contenedores (Docker, Podman, Nerdctl…).
+### Virtualization
+Manage KVM and container engines (Docker, Podman, Nerdctl, and more).
 
-| Comando | Descripción |
+| Command | Description |
 |---------|-------------|
-| Estado módulo KVM | kvm_amd / kvm_intel / kvm según la CPU |
-| Activar / desactivar KVM | Carga o descarga el módulo KVM (sudo) |
-| Motor detectado | Docker, Podman, Nerdctl instalados en el PATH |
-| Estado del servicio | Estado systemd del motor de contenedores |
-| Contenedores activos | Contenedores en ejecución |
-| Todos los contenedores | Contenedores activos y parados |
-| Número de contenedores | Conteo de contenedores activos y totales |
-| Imágenes | Imágenes locales disponibles |
-| Imágenes colgantes | Imágenes sin etiqueta (dangling) |
-| Volúmenes | Volúmenes gestionados por el motor |
-| Volúmenes no usados | Volúmenes sin contenedor asociado |
-| Redes virtuales | Redes del motor de contenedores |
-| Arrancar Docker | Inicia el servicio Docker (sudo systemctl) |
-| Arrancar Podman | Inicia el socket/servicio Podman (sudo) |
-| Arrancar Nerdctl (containerd) | Inicia el servicio containerd (sudo systemctl) |
-| Arrancar Lima | Inicia la VM Lima por defecto (limactl start) |
-| Estadísticas de recursos | CPU y RAM de contenedores activos |
-| Uso de espacio | Espacio: imágenes, contenedores, volúmenes |
-| Información del sistema | Versión y configuración del motor |
+| KVM module status | kvm_amd / kvm_intel / kvm depending on the CPU |
+| Enable / disable KVM | Load or unload the KVM module (sudo) |
+| Detected engine | Docker, Podman, and Nerdctl installed in PATH |
+| Service status | systemd status of the container engine |
+| Running containers | Containers currently running |
+| All containers | Running and stopped containers |
+| Container count | Count of running and total containers |
+| Images | Available local images |
+| Dangling images | Untagged images |
+| Volumes | Volumes managed by the engine |
+| Unused volumes | Volumes without an associated container |
+| Virtual networks | Networks managed by the container engine |
+| Start Docker | Start the Docker service (`sudo systemctl`) |
+| Start Podman | Start the Podman socket/service (sudo) |
+| Start Nerdctl (containerd) | Start the containerd service (`sudo systemctl`) |
+| Start Lima | Start the default Lima VM (`limactl start`) |
+| Resource statistics | CPU and RAM usage of running containers |
+| Space usage | Space used by images, containers, and volumes |
+| System information | Engine version and configuration |
 
 ---
 
 ## Releases
 
-Los binarios precompilados se publican en la carpeta [`releases/`](releases/) con naming semántico:
+Precompiled binaries are published in the [`releases/`](releases/) directory using semantic versioning:
 
 ```
 releases/
@@ -210,31 +262,31 @@ releases/
     └── SHA256SUMS                       ← checksum de integridad
 ```
 
-### Descargar e instalar v1.0.0
+### Download and Install v1.0.0
 
 ```bash
-# Descargar el binario
+# Download the binary
 curl -LO https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/core_menu-v1.0.0-x86_64-linux
 
-# Verificar integridad
+# Verify integrity
 sha256sum -c <(curl -s https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/SHA256SUMS)
 
-# Instalar en el sistema
+# Install system-wide
 chmod +x core_menu-v1.0.0-x86_64-linux
 sudo mv core_menu-v1.0.0-x86_64-linux /usr/local/bin/core_menu
 ```
 
-### Historial de versiones
+### Version History
 
-| Versión | Fecha | Notas |
+| Version | Date | Notes |
 |---------|-------|-------|
-| [v1.0.0](releases/v1.0.0/) | 2026-04-13 | Primera versión estable de producción |
+| [v1.0.0](releases/v1.0.0/) | 2026-04-13 | First stable production release |
 
 ---
 
-## Tecnología
+## Technology
 
-- **Lenguaje:** Rust 2021 edition
-- **TUI:** [ratatui](https://ratatui.rs) v0.26 sobre [crossterm](https://github.com/crossterm-rs/crossterm) v0.27
-- **Gestión de errores:** [anyhow](https://github.com/dtolnay/anyhow) v1.0
-- **Binario final:** ~875 KB (`strip` + `--release`), versión `1.0.0`
+- **Language:** Rust 2021 edition
+- **TUI:** [ratatui](https://ratatui.rs) v0.26 on top of [crossterm](https://github.com/crossterm-rs/crossterm) v0.27
+- **Error handling:** [anyhow](https://github.com/dtolnay/anyhow) v1.0
+- **Final binary:** ~875 KB (`strip` + `--release`), version `1.0.0`
