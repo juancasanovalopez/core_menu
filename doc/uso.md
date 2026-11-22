@@ -58,6 +58,29 @@ navigation.
 | `↓` / `j` | Move the cursor down |
 | `Enter` | Enter the selected submenu |
 | `q` / `Q` | Exit the application |
+| `u` | Open update status/details |
+
+### Updates
+
+On startup, a background check compares the installed SemVer version with the
+stable GitHub release marked **latest**. If newer, an offer opens once when the
+main menu is visible; submenus and text input are not interrupted. Declining
+does not reopen the offer automatically during the same run.
+
+1. Press `s` to download and verify the update for Linux x86_64 or ARM64.
+2. Inspect the verified version and installation destination.
+3. Press `s` again to install. System installation at `/usr/local/bin/core_menu`
+   requests sudo only at this stage; start the application without sudo.
+4. On success, note the recovery-copy path and restart core_menu manually.
+
+`n`, `Esc` or `q` cancels/returns without installing; `↑`/`↓` or `k`/`j` scrolls
+details on small terminals. The update screen reports progress and errors,
+including offline/rate-limited checks and unavailable or unsigned release assets.
+Failed checks do not prevent using the menus. The `u` shortcut can reopen details
+after declining. Cancelled downloads require restarting the application to retry.
+
+See [installation, publication and recovery](instalacion.md#7-updates-and-release-publishing)
+for supported paths, signature verification and signing-secret configuration.
 
 ### Inside a Submenu
 

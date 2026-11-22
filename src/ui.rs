@@ -64,6 +64,7 @@ pub fn render(f: &mut Frame, app: &App) {
 
     match &app.mode {
         AppMode::MainMenu              => render_main_menu(f, app, chunks[1]),
+        AppMode::Update => render_update(f, app, chunks[1]),
         AppMode::SubMenu(idx)         => render_submenu(f, app, *idx, chunks[1]),
         AppMode::Output { title, content, .. } => {
             render_output(f, app, title, content, chunks[1]);
@@ -121,6 +122,16 @@ fn render_header(f: &mut Frame, area: Rect) {
 /// - cursor < n_submenús  → índice visual = cursor
 /// - cursor == n_submenús → índice visual = cursor + 1  (salta el separador)
 fn render_main_menu(f: &mut Frame, app: &App, area: Rect) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(3)])
+        .split(area);
+    f.render_widget(
+        Paragraph::new(format!(" {}", app.updater.state.summary()))
+            .style(Style::default().fg(ITEM_DESC_FG)),
+        sections[0],
+    );
+    let area = sections[1];
     let summary = hardware_lines(app);
     let summary_height = (summary.len().saturating_add(1).min(u16::MAX as usize) as u16)
         .min(area.height.saturating_sub(5));
@@ -197,6 +208,54 @@ fn render_main_menu(f: &mut Frame, app: &App, area: Rect) {
     state.select(Some(visual_idx));
 
     f.render_stateful_widget(list, area, &mut state);
+}
+
+fn render_update(f: &mut Frame, app: &App, area: Rect) {
+    use crate::update::{CheckOutcome, State};
+    let mut lines = vec![
+        Line::from(format!("Versión instalada: {}", env!("CARGO_PKG_VERSION"))),
+    ];
+    match &app.updater.state {
+        State::Checked(CheckOutcome::Available(release)) => {
+            lines.push(Line::from(format!("Versión disponible: {}", release.tag_name)));
+            lines.push(Line::from("¿Descargar y verificar esta versión?"));
+            lines.push(Line::from("[s] Sí / [n] No"));
+            lines.push(Line::from("Todavía no se modificará el ejecutable."));
+            lines.push(Line::from("La firma Ed25519 y SHA-256 se validarán antes de instalar."));
+            lines.push(Line::from(release.html_url.clone()));
+        }
+        State::Downloading => {
+            lines.push(Line::from(app.updater.state.summary()));
+            if let Some((bytes, total)) = app.updater.progress {
+                lines.push(Line::from(format!("{} / {} descargados", fmt_bytes(bytes), fmt_bytes(total))));
+            }
+            lines.push(Line::from("Esc/n: cancelar sin modificar el ejecutable."));
+        }
+        State::Ready(prepared) => {
+            lines.push(Line::from(format!("Versión verificada: {}", prepared.release.tag_name)));
+            lines.push(Line::from("¿Reemplazar el ejecutable?"));
+            lines.push(Line::from("[s] Sí / [n] No"));
+            lines.push(Line::from(format!("Destino: {}", prepared.destination.path.display())));
+            lines.push(Line::from(if prepared.destination.elevated {
+                "Instalación del sistema: se solicitarán permisos con sudo."
+            } else {
+                "Instalación del usuario: sin permisos de administrador."
+            }));
+            lines.push(Line::from("Se conservará una copia; después la aplicación se cerrará."));
+        }
+        _ => {
+            lines.push(Line::from(app.updater.state.summary()));
+            lines.push(Line::from(crate::update::RELEASES_URL));
+        }
+    }
+    f.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .scroll((app.update_scroll, 0))
+            .block(Block::default().borders(Borders::ALL).title(" Actualizaciones ")
+                .border_style(Style::default().fg(BORDER_COLOR))),
+        area,
+    );
 }
 
 fn hardware_lines(app: &App) -> Vec<Line<'static>> {
@@ -563,7 +622,9 @@ fn fmt_bytes(b: u64) -> String {
 fn render_footer(f: &mut Frame, mode: &AppMode, area: Rect) {
     let hints = match mode {
         AppMode::MainMenu =>
-            " ↑↓/jk: Navegar   Enter: Seleccionar   q / Ctrl+C: Salir ",
+            " ↑↓/jk: Navegar   Enter: Seleccionar   u: Actualizaciones   q: Salir ",
+        AppMode::Update =>
+            " s: Sí  n/Esc: Volver  ↑↓: Scroll ",
         AppMode::SubMenu(_) =>
             " ↑↓/jk: Navegar   Enter: Ejecutar   Esc/q: Menú principal ",
         AppMode::Output { .. } =>
@@ -616,6 +677,31 @@ mod tests {
             .iter()
             .map(|cell| cell.symbol())
             .collect()
+    }
+
+    #[test]
+    fn update_offer_and_errors_are_visible_at_small_sizes() {
+        let mut app = crate::app::tests::available_app();
+        app.poll_updates();
+        for (width, height) in [(80, 24), (40, 14)] {
+            let text = screen(&app, width, height);
+            assert!(text.contains("Versión instalada:"));
+            assert!(text.contains("Versión disponible: v99.0.0"));
+            assert!(text.contains("[s] Sí / [n] No"));
+        }
+        app.updater.state = crate::update::State::Error("Sin conexión".into());
+        assert!(screen(&app, 40, 14).contains("Sin conexión"));
+        app.handle_update_key(KeyCode::Down);
+        assert_eq!(app.update_scroll, 1);
+        app.handle_update_key(KeyCode::Esc);
+        assert_eq!(app.update_scroll, 0);
+        app.mode = AppMode::Update;
+        app.updater.state = crate::update::State::Ready(crate::update::Prepared::fixture());
+        for (width, height) in [(80, 24), (40, 14)] {
+            let text = screen(&app, width, height);
+            assert!(text.contains("Versión verificada: v99.0.0"));
+            assert!(text.contains("[s] Sí / [n] No"));
+        }
     }
 
     #[test]

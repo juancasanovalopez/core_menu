@@ -17,6 +17,7 @@ use std::io;
 use std::time::{Duration, Instant};
 
 use crate::hardware::HardwareInfo;
+use crate::update::{self, State, Updater};
 use crate::submenus::{get_submenus, ChartBar, CommandKind, SubMenu};
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ use crate::submenus::{get_submenus, ChartBar, CommandKind, SubMenu};
 pub enum AppMode {
     /// Pantalla inicial: lista de submenús disponibles.
     MainMenu,
+    Update,
 
     /// Submenú expandido. El `usize` es el índice en [`App::submenus`].
     SubMenu(usize),
@@ -90,6 +92,10 @@ pub struct App {
     pub submenus: Vec<SubMenu>,
     pub hardware: HardwareInfo,
     hardware_updated_at: Instant,
+    pub updater: Updater,
+    pub update_scroll: u16,
+    install_requested: bool,
+    update_offer_shown: bool,
 }
 
 impl App {
@@ -103,12 +109,35 @@ impl App {
             submenus:      get_submenus(),
             hardware:      HardwareInfo::read(),
             hardware_updated_at: Instant::now(),
+            updater:       Updater::new(),
+            update_scroll: 0,
+            install_requested: false,
+            update_offer_shown: false,
         }
     }
 
     /// Número de entradas visibles en el menú principal (submenús + "Salir").
     pub fn main_menu_len(&self) -> usize {
         self.submenus.len() + 1 // +1 = entrada "Salir"
+    }
+
+    pub fn poll_updates(&mut self) {
+        let previous = std::mem::discriminant(&self.updater.state);
+        self.updater.poll();
+        if previous != std::mem::discriminant(&self.updater.state) {
+            self.update_scroll = 0;
+        }
+        if !self.update_offer_shown
+            && matches!(self.updater.state, State::Checked(update::CheckOutcome::Available(_)))
+        {
+            match self.mode {
+                AppMode::MainMenu | AppMode::Update => {
+                    self.update_offer_shown = true;
+                    self.mode = AppMode::Update;
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -122,6 +151,7 @@ impl App {
     /// Devuelve `true` cuando la aplicación debe cerrarse.
     pub fn handle_main_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> bool {
         match code {
+            KeyCode::Char('u') => self.mode = AppMode::Update,
             KeyCode::Up | KeyCode::Char('k') => {
                 if self.main_cursor > 0 {
                     self.main_cursor -= 1;
@@ -280,11 +310,43 @@ impl App {
             _ => {}
         }
     }
+
+    pub fn handle_update_key(&mut self, code: KeyCode) {
+        match code {
+            KeyCode::Up | KeyCode::Char('k') => self.update_scroll = self.update_scroll.saturating_sub(1),
+            KeyCode::Down | KeyCode::Char('j') => self.update_scroll = self.update_scroll.saturating_add(1),
+            KeyCode::Char('s') => match self.updater.state {
+                State::Checked(update::CheckOutcome::Available(_)) => {
+                    self.update_scroll = 0;
+                    if let Err(error) = self.updater.download() {
+                        self.updater.state = State::Error(format!("{error:#}"));
+                    }
+                }
+                State::Ready(_) => self.install_requested = true,
+                _ => {}
+            },
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('n') => {
+                self.updater.cancel();
+                self.update_scroll = 0;
+                self.mode = AppMode::MainMenu;
+            }
+            _ => {}
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BUCLE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────────
+
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+    }
+}
 
 /// Inicializa el terminal, ejecuta el bucle de eventos y restaura el estado al salir.
 pub fn run() -> Result<()> {
@@ -298,15 +360,42 @@ pub fn run() -> Result<()> {
 
     // Configurar terminal en modo raw y pantalla alternativa
     enable_raw_mode()?;
+    let _terminal_guard = TerminalGuard;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
 
     let backend  = CrosstermBackend::new(stdout);
     let mut term = Terminal::new(backend)?;
     let mut app  = App::new();
+    if let Err(error) = app.updater.start() {
+        app.updater.state = State::Error(format!("{error:#}"));
+    }
+    let mut installed = None;
 
     // ── Bucle principal ──────────────────────────────────────────────────────
     loop {
+        app.poll_updates();
+        if app.install_requested {
+            app.install_requested = false;
+            let state = std::mem::replace(&mut app.updater.state, State::Checking);
+            if let State::Ready(mut prepared) = state {
+                disable_raw_mode()?;
+                execute!(term.backend_mut(), LeaveAlternateScreen)?;
+                term.show_cursor()?;
+                match update::install::install(&mut prepared) {
+                    Ok(backup) => {
+                        installed = Some((prepared.release.tag_name.clone(), backup));
+                        break;
+                    }
+                    Err(error) => app.updater.state = State::Error(format!("{error:#}")),
+                }
+                enable_raw_mode()?;
+                execute!(term.backend_mut(), EnterAlternateScreen)?;
+                term.clear()?;
+            } else {
+                app.updater.state = State::Error("No hay un binario verificado para instalar".into());
+            }
+        }
         if matches!(app.mode, AppMode::MainMenu)
             && app.hardware_updated_at.elapsed() >= Duration::from_secs(1)
         {
@@ -330,6 +419,10 @@ pub fn run() -> Result<()> {
             let should_quit = match app.mode.clone() {
                 AppMode::MainMenu => {
                     app.handle_main_key(key.code, key.modifiers)
+                }
+                AppMode::Update => {
+                    app.handle_update_key(key.code);
+                    false
                 }
                 AppMode::SubMenu(idx) => {
                     app.handle_submenu_key(key.code, key.modifiers, idx);
@@ -359,6 +452,83 @@ pub fn run() -> Result<()> {
     disable_raw_mode()?;
     execute!(term.backend_mut(), LeaveAlternateScreen)?;
     term.show_cursor()?;
+    if let Some((version, backup)) = installed {
+        println!("Actualización {version} instalada. Reinicia core_menu para usar la nueva versión.");
+        println!("Copia de recuperación: {}", backup.display());
+    }
 
     Ok(())
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+
+    pub(crate) fn available_app() -> App {
+        let mut app = App::new();
+        app.updater.state = State::Checked(update::CheckOutcome::Available(update::Release {
+            tag_name: "v99.0.0".into(),
+            html_url: format!("{}/tag/v99.0.0", update::RELEASES_URL),
+            draft: false,
+            prerelease: false,
+            assets: Vec::new(),
+        }));
+        app
+    }
+
+    #[test]
+    fn offer_is_deferred_and_shown_only_once() {
+        let mut app = available_app();
+        app.mode = AppMode::SubMenu(0);
+        app.poll_updates();
+        assert!(matches!(app.mode, AppMode::SubMenu(0)));
+        app.mode = AppMode::InputPrompt {
+            submenu_idx: 0, item_idx: 0, prompt: "Nombre", buffer: "texto".into(),
+        };
+        app.poll_updates();
+        assert!(matches!(app.mode, AppMode::InputPrompt { ref buffer, .. } if buffer == "texto"));
+        app.mode = AppMode::MainMenu;
+        app.poll_updates();
+        assert!(matches!(app.mode, AppMode::Update));
+        assert!(!app.install_requested);
+        app.handle_update_key(KeyCode::Char('n'));
+        app.poll_updates();
+        assert!(matches!(app.mode, AppMode::MainMenu));
+        assert!(matches!(app.updater.state, State::Checked(update::CheckOutcome::Available(_))));
+        app.handle_main_key(KeyCode::Char('u'), KeyModifiers::NONE);
+        assert!(matches!(app.mode, AppMode::Update));
+        app.handle_update_key(KeyCode::Esc);
+        assert!(!app.install_requested);
+    }
+
+    #[test]
+    fn checking_and_errors_do_not_interrupt_navigation() {
+        let mut app = App::new();
+        app.poll_updates();
+        assert!(matches!(app.mode, AppMode::MainMenu));
+        app.updater.state = State::Error("Sin conexión".into());
+        app.poll_updates();
+        app.handle_update_key(KeyCode::Char('s'));
+        assert!(matches!(app.mode, AppMode::MainMenu));
+        assert!(!app.install_requested);
+    }
+
+    #[test]
+    fn installation_requires_confirmation_of_a_verified_update() {
+        let mut app = App::new();
+        app.mode = AppMode::Update;
+        app.updater.state = State::Downloading;
+        app.handle_update_key(KeyCode::Char('s'));
+        assert!(!app.install_requested);
+        app.updater.state = State::Ready(update::Prepared::fixture());
+        assert!(!app.install_requested);
+        app.handle_update_key(KeyCode::Char('s'));
+        assert!(app.install_requested);
+
+        let mut app = App::new();
+        app.updater.state = State::Ready(update::Prepared::fixture());
+        app.handle_update_key(KeyCode::Esc);
+        assert!(!app.install_requested);
+        assert!(matches!(app.updater.state, State::Cancelled));
+    }
 }

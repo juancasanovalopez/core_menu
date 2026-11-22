@@ -56,10 +56,32 @@ mod app;
 mod hardware;
 mod submenus;
 mod ui;
+mod update;
 
 fn main() {
-    if let Err(e) = app::run() {
+    if let Err(e) = start() {
         eprintln!("Error fatal: {e}");
         std::process::exit(1);
+    }
+}
+
+fn start() -> anyhow::Result<()> {
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    match arguments.as_slice() {
+        [] => app::run(),
+        [flag] if flag == "--version" => {
+            println!("core_menu {}", env!("CARGO_PKG_VERSION"));
+            Ok(())
+        }
+        [flag] if flag == "--help" || flag == "-h" => {
+            println!("core_menu [--version | --help]\nSin argumentos: menú y comprobación de actualizaciones.");
+            Ok(())
+        }
+        [flag] if flag == "--internal-update-check" => {
+            serde_json::to_writer(std::io::stdout(), &update::check()?)?;
+            Ok(())
+        }
+        [flag] if flag == "--internal-install-update" => update::install::helper(),
+        _ => anyhow::bail!("Argumentos no válidos; usa --help"),
     }
 }

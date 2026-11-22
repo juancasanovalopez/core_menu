@@ -32,6 +32,15 @@ data types used by the application and UI:
 Each collector is visible only to its parent module. RAM is collected before
 GPU data because shared GPU memory estimates depend on available system RAM.
 
+### Versioning extensions
+
+Use Conventional Commits for extensions: `feat:` for backward-compatible
+functionality, `fix:` for fixes, and `!` or a `BREAKING CHANGE:` footer for
+incompatible behavior. Release Please calculates the next version; rebuilding
+does not increment it. Follow the
+[release preparation and publishing procedure](instalacion.md#publishing-a-version)
+before creating a version tag.
+
 ---
 
 ## Case 1 — Add a Command to an Existing Submenu

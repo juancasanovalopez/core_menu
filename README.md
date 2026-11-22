@@ -253,28 +253,40 @@ Manage KVM and container engines (Docker, Podman, Nerdctl, and more).
 
 ## Releases
 
-Precompiled binaries are published in the [`releases/`](releases/) directory using semantic versioning:
+New precompiled binaries are published as assets of
+[GitHub Releases](https://github.com/juancasanovalopez/core_menu/releases).
+Versions follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`,
+with tags such as `v1.1.0` matching the version in `Cargo.toml`.
+Linux x86_64 and ARM64 releases use static musl executables.
 
-```
-releases/
-└── v1.0.0/
-    ├── core_menu-v1.0.0-x86_64-linux   ← binario ELF64, strip, ~875 KB
-    └── SHA256SUMS                       ← checksum de integridad
-```
+### Automatic updates
 
-### Download and Install v1.0.0
+At startup, core_menu checks GitHub's stable **latest** release in the background.
+It compares SemVer precedence numerically and never installs equal or older
+versions. Drafts and prereleases are not installed; build metadata alone does
+not make a version newer.
 
-```bash
-# Download the binary
-curl -LO https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/core_menu-v1.0.0-x86_64-linux
+When an update is available, the offer appears in the main menu without
+interrupting a submenu or text entry. Accept with `s` to download and verify
+the Ed25519 signature, architecture, size and SHA-256, then confirm again with
+`s` to replace the executable. `n`/`Esc` cancels. Use `u` from the main menu
+to inspect status and `↑`/`↓` to scroll details.
 
-# Verify integrity
-sha256sum -c <(curl -s https://raw.githubusercontent.com/<usuario>/core_menu/master/releases/v1.0.0/SHA256SUMS)
+User-owned installations update without sudo. A system installation must be
+at `/usr/local/bin/core_menu`; sudo is requested only for the final replacement.
+Package-managed executables must be updated through their package manager.
+Start without sudo to download/install an update. The old executable is retained
+in a recovery directory, and the application closes after installation:
+**restart manually** to use the new version.
 
-# Install system-wide
-chmod +x core_menu-v1.0.0-x86_64-linux
-sudo mv core_menu-v1.0.0-x86_64-linux /usr/local/bin/core_menu
-```
+Connection errors do not prevent normal use. An inaccessible or absent stable
+release is reported separately from being up to date. Older binaries without
+this updater require one initial manual installation.
+
+See [installation and release publishing](doc/instalacion.md#7-updates-and-release-publishing)
+for assets, signature verification, signing-secret setup and recovery.
+The files in [`releases/v1.0.0/`](releases/v1.0.0/) are historical binaries,
+not the source used by the automatic updater.
 
 ### Version History
 
@@ -289,4 +301,4 @@ sudo mv core_menu-v1.0.0-x86_64-linux /usr/local/bin/core_menu
 - **Language:** Rust 2021 edition
 - **TUI:** [ratatui](https://ratatui.rs) v0.26 on top of [crossterm](https://github.com/crossterm-rs/crossterm) v0.27
 - **Error handling:** [anyhow](https://github.com/dtolnay/anyhow) v1.0
-- **Final binary:** ~875 KB (`strip` + `--release`), version `1.0.0`
+- **Release binaries:** static musl builds for Linux x86_64 and ARM64
