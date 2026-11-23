@@ -104,6 +104,31 @@ class InstallerTests(unittest.TestCase):
             with self.assertRaises(installer.InstallError):
                 installer.fetch_release(target)
 
+    def test_latest_release_404_is_distinct_from_other_http_errors(self):
+        target = installer.TARGETS["x86_64"]
+        missing = installer.urllib.error.HTTPError("https://api.github.com/", 404, "Not Found", None, None)
+        with mock.patch.object(installer, "download", side_effect=missing):
+            with self.assertRaisesRegex(installer.InstallError, "release estable accesible"):
+                installer.fetch_release(target)
+
+        forbidden = installer.urllib.error.HTTPError("https://api.github.com/", 403, "Forbidden", None, None)
+        with mock.patch.object(installer, "download", side_effect=forbidden):
+            with self.assertRaises(installer.urllib.error.HTTPError) as caught:
+                installer.fetch_release(target)
+            self.assertEqual(caught.exception.code, 403)
+
+        tag = "v1.2.3"
+        names = ["update-manifest-{}.json".format(target), "update-manifest-{}.sig".format(target)]
+        prefix = "https://github.com/{}/releases/download/{}/".format(installer.REPOSITORY, tag)
+        release = {"draft": False, "prerelease": False, "tag_name": tag, "assets": [
+            {"name": name, "size": 1, "browser_download_url": prefix + name} for name in names
+        ]}
+        asset_missing = installer.urllib.error.HTTPError(prefix + names[0], 404, "Not Found", None, None)
+        with mock.patch.object(installer, "download", side_effect=[json.dumps(release).encode(), asset_missing]):
+            with self.assertRaises(installer.urllib.error.HTTPError) as caught:
+                installer.fetch_release(target)
+            self.assertEqual(caught.exception.url, prefix + names[0])
+
     def test_signed_release_installs_without_rust_for_both_targets(self):
         for machine in ("x86_64", "aarch64"):
             target = installer.TARGETS[machine]

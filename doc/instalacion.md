@@ -22,16 +22,21 @@ manager. Rust is only needed for building from source.
 
 Download both installer files over HTTPS. This example requires curl for the
 initial download; if it is missing, install curl first or obtain both files
-through another trusted channel.
+through another trusted channel. Run the following as your normal user. It
+creates a new private temporary directory, so it does not depend on write
+permissions in the current directory or overwrite an existing installer.
 
 ```bash
-mkdir -p core-menu-installer
-cd core-menu-installer
+installer_dir="$(mktemp -d)" &&
+cd "$installer_dir" &&
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLO \
-  https://raw.githubusercontent.com/juancasanovalopez/core_menu/master/scripts/install.sh
+  https://raw.githubusercontent.com/juancasanovalopez/core_menu/master/scripts/install.sh &&
 curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLO \
   https://raw.githubusercontent.com/juancasanovalopez/core_menu/master/scripts/install_release.py
 ```
+
+Continue only if both downloads succeed; stay in this directory for the next
+steps.
 
 Inspect both scripts and verify their origin before running them. The installer
 contains the release public key; its authenticity depends on how you obtained
@@ -103,6 +108,22 @@ For development, `cargo run` builds and runs the debug binary. Alternatively,
 remove that installation with `cargo uninstall core_menu`.
 
 ## 3. Troubleshooting
+
+### No accessible stable release or HTTP 404
+
+The installer selects the stable release marked latest, not a release PR or an
+unsigned historical binary. Check the
+[GitHub releases page](https://github.com/juancasanovalopez/core_menu/releases).
+If no signed release has been published, complete the
+[publishing procedure](#publishing-a-version) before trying the installer again.
+A missing or inaccessible release asset can also return HTTP 404.
+
+### `curl: (23)` or `Permission denied` when downloading
+
+The current directory or an existing destination file may not be writable.
+Do not use sudo to download the installer; use the temporary-directory
+commands above. If `mktemp` fails, check that `TMPDIR` (if set) points to a
+writable temporary directory.
 
 ### The terminal is left in an unusual state after an error
 

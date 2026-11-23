@@ -19,7 +19,7 @@ import urllib.parse
 import urllib.request
 
 REPOSITORY = "juancasanovalopez/core_menu"
-PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGUfkDLzRtKVOGStC7qK6cOQue5KQdI+y4U9vdBaQ3zF"
+PUBLIC_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMdcA5nu3hnutvDuuAmJ2AExBANsAGKB8lNYaGaUx9CI"
 VERSION = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z")
 HASH = re.compile(r"[0-9a-f]{64}\Z")
 TARGETS = {
@@ -149,7 +149,17 @@ def verify_binary(data, manifest):
 def fetch_release(target):
     deadline = time.monotonic() + 120
     url = "https://api.github.com/repos/{}/releases/latest".format(REPOSITORY)
-    release = json.loads(download(url, 512 * 1024, deadline))
+    try:
+        release_data = download(url, 512 * 1024, deadline)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise InstallError(
+                "No hay ningún release estable accesible en GitHub. "
+                "Una PR de release no publica binarios; consulta "
+                "https://github.com/{}/releases.".format(REPOSITORY)
+            ) from error
+        raise
+    release = json.loads(release_data)
     if not isinstance(release, dict) or release.get("draft") is not False or release.get("prerelease") is not False:
         raise InstallError("El release latest no es estable.")
     tag = release["tag_name"]
