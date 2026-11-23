@@ -22,12 +22,12 @@ jobs:
       pull-requests: write
       issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Test release validation
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           target-branch: master

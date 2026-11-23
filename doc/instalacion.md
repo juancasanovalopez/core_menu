@@ -234,6 +234,10 @@ Settings → Actions → General. The
 `GITHUB_TOKEN` with contents, pull-request and issue permissions; no additional
 personal access token is required. Keep the signing secret configured above.
 
+The release workflows use JavaScript actions on Node.js 24 and require runners
+that support that runtime. Artifact downloads fail if their digest does not
+match, rather than only warning; the signed release asset contract is unchanged.
+
 Pushes to `master` (or manually running **Prepare release** on `master`) create
 or update a release PR, but never create a tag or publish a release.
 PRs opened with `GITHUB_TOKEN` do not automatically trigger other workflows;

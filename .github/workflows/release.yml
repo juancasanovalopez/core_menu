@@ -16,7 +16,7 @@ jobs:
   validate:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -41,7 +41,7 @@ jobs:
             machine: AArch64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
@@ -71,7 +71,7 @@ jobs:
           test "$("$binary" --version)" = "core_menu ${TAG#v}"
           mkdir -p dist
           cp "$binary" "dist/core_menu-$TAG-$TARGET"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: dist/*
@@ -84,10 +84,10 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
