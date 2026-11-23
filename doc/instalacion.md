@@ -4,131 +4,105 @@
 
 ## Requirements
 
-| Requirement | Minimum version | Notes |
-|-----------|---------------|-------|
-| Rust + Cargo | Current stable | Verified with rustc 1.94.1; installed through [rustup](https://rustup.rs) |
-| Terminal | Any | xterm, GNOME Terminal, Alacritty, tmux, etc. |
-| Operating system | Linux (any distribution) | — |
+The release workflow builds statically linked Linux executables for **x86_64**
+(64-bit Intel/AMD) and **aarch64** (64-bit ARM). Rust and Cargo are not needed
+to install or run a published binary. A compatible Linux kernel and an interactive terminal
+supporting ANSI escape sequences are required; compatibility with every kernel,
+distribution or terminal cannot be guaranteed. Individual menu actions can
+require additional system commands or privileges.
 
-> The locked updater dependencies require a recent Rust toolchain.
-> Compatibility with Rust 1.70 is no longer claimed.
+The initial installer uses a POSIX shell, Python 3.8+, curl, OpenSSH `ssh-keygen`
+with `-Y verify` support, coreutils, grep, and system TLS certificates. For a system
+installation it also needs sudo and `/usr/bin/python3`. If dependencies are
+missing, the installer offers to install them with apt, dnf or pacman after
+confirmation; otherwise install them manually using your distribution's package
+manager. Rust is only needed for building from source.
 
----
+## 1. Install a precompiled release
 
-## 1. Install Rust (if not already installed)
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Follow the installer instructions (the default option is recommended).
-Then activate the environment in the current session:
-
-```bash
-source "$HOME/.cargo/env"
-```
-
-Verify the installation:
+Download both installer files over HTTPS. This example requires curl for the
+initial download; if it is missing, install curl first or obtain both files
+through another trusted channel.
 
 ```bash
-rustc --version
-cargo --version
+mkdir -p core-menu-installer
+cd core-menu-installer
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLO \
+  https://raw.githubusercontent.com/juancasanovalopez/core_menu/master/scripts/install.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fLO \
+  https://raw.githubusercontent.com/juancasanovalopez/core_menu/master/scripts/install_release.py
 ```
 
----
-
-## 2. Obtain the Source Code
-
-### Option A — Clone the repository (if hosted in Git)
+Inspect both scripts and verify their origin before running them. The installer
+contains the release public key; its authenticity depends on how you obtained
+the scripts. Compare that key with
+[`config/update-public-key.pub`](../config/update-public-key.pub) obtained
+independently through a trusted channel. The signed release manifest protects
+the binary, but cannot authenticate an installer that was already altered.
 
 ```bash
-git clone <REPOSITORY_URL>
-cd core_menu
+chmod go-w install_release.py
+sh install.sh
 ```
 
-### Option B — From a local copy
+Run this without sudo. Choose **1** for `~/.local/bin/core_menu`, or **2** for
+`/usr/local/bin/core_menu`; the latter asks for sudo only for installation.
+Dependency installation, if accepted, also requires sudo. The installer
+verifies the latest stable release's signed manifest, architecture, size and
+SHA-256 before installation; the privileged system helper verifies them again.
+Existing executables require confirmation, and a downgrade or an unknown
+installed version requires an additional confirmation. Managed packages and
+unsafe destinations are not replaced. A replaced executable is retained in the
+printed recovery path.
+
+The installer needs a published signed release matching the
+[asset contract](#release-asset-contract). If none is available, it stops with
+an error. The historical unsigned `v1.0.0` binary cannot be installed by this
+flow.
+
+Ensure `~/.local/bin` is in `PATH` for a user installation; for the current
+shell, if needed:
 
 ```bash
-cd /path/to/core_menu
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
----
-
-## 3. Build
-
-### Development mode (faster to compile, unoptimized binary)
+Add that line to your shell configuration to make it permanent. Check the
+installation and start the application:
 
 ```bash
-cargo build
-```
-
-The binary is generated at:
-
-```
-target/debug/core_menu
-```
-
-### Release mode (recommended for daily use)
-
-```bash
-cargo build --release
-```
-
-The binary is generated at:
-
-```
-target/release/core_menu
-```
-
----
-
-## 4. Run
-
-### From the project directory
-
-```bash
-# Debug mode
-./target/debug/core_menu
-
-# Release mode (recommended)
-./target/release/core_menu
-```
-
-### Cargo shortcut
-
-```bash
-cargo run           # build in debug mode and run
-cargo run --release # build in release mode and run
-```
-
----
-
-## 5. Global Installation (optional)
-
-To run `core_menu` from any directory without specifying its path:
-
-```bash
-cargo install --path .
-```
-
-This copies the binary to `~/.cargo/bin/core_menu`.
-Make sure `~/.cargo/bin` is in your `PATH` (the rustup installer configures it automatically).
-
-Verify that it is available globally:
-
-```bash
+core_menu --version
 core_menu
 ```
 
-To uninstall it:
+To uninstall, remove the executable from the selected destination:
 
 ```bash
-cargo uninstall core_menu
+rm "$HOME/.local/bin/core_menu"    # user installation
+sudo rm /usr/local/bin/core_menu  # system installation
 ```
 
----
+Recovery directories and `.core_menu.update.lock` are not automatically
+removed; retain any backup you still need.
 
-## 6. Troubleshooting
+## 2. Build from source (optional)
+
+Building requires a current stable Rust toolchain and Cargo, installed for
+example through [rustup](https://rustup.rs). The locked updater dependencies
+were verified with rustc 1.94.1; compatibility with Rust 1.70 is not claimed.
+
+```bash
+git clone https://github.com/juancasanovalopez/core_menu.git
+cd core_menu
+cargo build --locked --release
+./target/release/core_menu
+```
+
+For development, `cargo run` builds and runs the debug binary. Alternatively,
+`cargo install --path .` installs a locally built binary to `~/.cargo/bin`;
+remove that installation with `cargo uninstall core_menu`.
+
+## 3. Troubleshooting
 
 ### The terminal is left in an unusual state after an error
 
@@ -151,7 +125,7 @@ echo $TERM
 If the variable is not set, force a compatible value before running:
 
 ```bash
-TERM=xterm-256color ./target/release/core_menu
+TERM=xterm-256color core_menu
 ```
 
 ### Some commands report "root permissions are required"
@@ -160,10 +134,18 @@ Some system commands (iptables, lastb, etc.) require elevated privileges.
 Run the application with `sudo` only if you trust the environment:
 
 ```bash
-sudo ./target/release/core_menu
+sudo core_menu
 ```
 
-### Error: `command not found: cargo`
+### Missing installer dependencies or unsupported OpenSSH
+
+Accept the proposed package installation or install Python 3.8+, curl, OpenSSH,
+coreutils and grep manually. `ssh-keygen -Y verify` must be supported by the
+installed OpenSSH version. If sudo, `/usr/bin/python3`, or a supported package
+manager is unavailable, install the missing dependencies through the
+distribution's normal administrative process.
+
+### Error: `command not found: cargo` while building from source
 
 The Rust environment is not active in the current session. Run:
 
@@ -175,7 +157,7 @@ Add that line to `~/.bashrc` or `~/.zshrc` to activate it automatically.
 
 ---
 
-## 7. Updates and Release Publishing
+## 4. Updates and Release Publishing
 
 ### Runtime behavior and installation paths
 
@@ -321,8 +303,9 @@ latest release.
 ### Initial manual install and recovery
 
 An old binary without updater support cannot bootstrap this feature itself.
-Build and install the new source, or download the matching binary and its
-manifest/signature from a release. For manual verification, obtain the trusted
+Use the installer above, build and install the new source, or download the
+matching binary and its manifest/signature from a release. For manual
+verification, obtain the trusted
 public key through a trusted channel, create an allowed-signers file containing
 `core_menu <public-key>`, and verify the exact manifest before trusting its hash:
 

@@ -92,6 +92,14 @@ register it in `get_submenus()`.
 
 ## Usage Guide
 
+### Install without Rust
+
+The release workflow prepares signed Linux binaries for x86_64 and ARM64.
+Once a signed release is published, follow the
+[installation guide](doc/instalacion.md#1-install-a-precompiled-release) to
+download and inspect the installer, select a user or system destination, and
+verify the release. Rust is only required when building from source.
+
 ### Starting the Application
 
 ```bash
